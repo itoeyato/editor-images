@@ -840,6 +840,7 @@
         <div class="toggle">
           <button id="modeFit" class="active">Ajustar</button>
           <button id="modeFill">Rellenar</button>
+          <button id="modeStretch">Estirar</button>
         </div>
         <div class="adjust-box">
           <label>Encuadre e Imagen Interna</label>
@@ -926,6 +927,7 @@
       <div class="toggle">
         <button id="batchModeFit">Ajustar</button>
         <button id="batchModeFill" class="active">Rellenar</button>
+        <button id="batchModeStretch">Estirar</button>
       </div>
       <div class="row" style="margin-top: 8px">
         <div>
@@ -1224,30 +1226,46 @@
             const imgAspect = img.width / img.height;
             const frameAspect = wPx / hPx;
             let drawW, drawH;
+            const centerX = xPx + wPx / 2, centerY = yPx + hPx / 2;
+
             if (mode === "fill") {
               if (imgAspect > frameAspect) { drawH = hPx; drawW = drawH * imgAspect; }
               else { drawW = wPx; drawH = drawW / imgAspect; }
-              if (zoom < 1.0) { if (imgAspect > frameAspect) { drawW = wPx; drawH = drawW / imgAspect; } else { drawH = hPx; drawW = drawH * imgAspect; } }
+              if (zoom < 1.0) {
+                if (imgAspect > frameAspect) { drawW = wPx; drawH = drawW / imgAspect; }
+                else { drawH = hPx; drawW = drawH * imgAspect; }
+              }
               const objPosX = 50 + posX / 2, objPosY = 50 + posY / 2;
               const anchorImgX = (drawW * objPosX) / 100, anchorImgY = (drawH * objPosY) / 100;
               const anchorContainerX = (wPx * objPosX) / 100, anchorContainerY = (hPx * objPosY) / 100;
               let imgLeft = xPx + anchorContainerX - anchorImgX, imgTop = yPx + anchorContainerY - anchorImgY;
-              const centerX = xPx + wPx / 2, centerY = yPx + hPx / 2;
               const imgCenterX = imgLeft + drawW / 2, imgCenterY = imgTop + drawH / 2;
-              const newCenterX = centerX + (imgCenterX - centerX) * zoom, newCenterY = centerY + (imgCenterY - centerY) * zoom;
+              const newCenterX = centerX + (imgCenterX - centerX) * zoom;
+              const newCenterY = centerY + (imgCenterY - centerY) * zoom;
               const newW = drawW * zoom, newH = drawH * zoom;
               imgLeft = newCenterX - newW / 2; imgTop = newCenterY - newH / 2;
               ctx.translate(centerX, centerY); ctx.rotate(rot); ctx.translate(-centerX, -centerY);
               ctx.drawImage(img, imgLeft, imgTop, newW, newH);
+            } else if (mode === "stretch") {
+              // Estirar: la imagen se deforma para llenar exactamente el marco
+              drawW = wPx;
+              drawH = hPx;
+              const newW = drawW * zoom;
+              const newH = drawH * zoom;
+              const imgLeft = centerX - newW / 2;
+              const imgTop = centerY - newH / 2;
+              ctx.translate(centerX, centerY); ctx.rotate(rot); ctx.translate(-centerX, -centerY);
+              ctx.drawImage(img, imgLeft, imgTop, newW, newH);
             } else {
+              // fit
               if (imgAspect > frameAspect) { drawW = wPx; drawH = drawW / imgAspect; }
               else { drawH = hPx; drawW = drawH * imgAspect; }
               const overflowX = wPx - drawW, overflowY = hPx - drawH;
               const offsetX = (overflowX / 2) * (posX / 100), offsetY = (overflowY / 2) * (posY / 100);
-              const centerX = xPx + wPx / 2, centerY = yPx + hPx / 2;
               let imgCenterX = centerX + offsetX, imgCenterY = centerY + offsetY;
               const newW = drawW * zoom, newH = drawH * zoom;
-              const newCenterX = centerX + (imgCenterX - centerX) * zoom, newCenterY = centerY + (imgCenterY - centerY) * zoom;
+              const newCenterX = centerX + (imgCenterX - centerX) * zoom;
+              const newCenterY = centerY + (imgCenterY - centerY) * zoom;
               const imgLeft = newCenterX - newW / 2, imgTop = newCenterY - newH / 2;
               ctx.translate(centerX, centerY); ctx.rotate(rot); ctx.translate(-centerX, -centerY);
               ctx.drawImage(img, imgLeft, imgTop, newW, newH);
@@ -1292,14 +1310,20 @@
             d.style.border = `${Math.max(1, borderPx)}px solid ${el.borderColor || "#000000"}`;
           } else d.style.border = "none";
           const img = document.createElement("img"); img.src = el.src;
-          img.style.objectFit = el.mode === "fill" ? "cover" : "contain";
           const zoom = (el.imgZoom !== undefined ? el.imgZoom : 100) / 100;
           const posX = el.imgPosX || 0, posY = el.imgPosY || 0, rot = el.imgRotate || 0;
           if (el.mode === "fill") {
+            img.style.objectFit = "cover";
             img.style.objectPosition = `${50 + posX / 2}% ${50 + posY / 2}%`;
             img.style.transform = `scale(${zoom}) rotate(${rot}deg)`;
             if (zoom < 1.0) img.style.objectFit = "contain";
-          } else { img.style.transform = `translate(${posX}%, ${posY}%) scale(${zoom}) rotate(${rot}deg)`; }
+          } else if (el.mode === "stretch") {
+            img.style.objectFit = "fill";
+            img.style.transform = `scale(${zoom}) rotate(${rot}deg)`;
+          } else {
+            img.style.objectFit = "contain";
+            img.style.transform = `translate(${posX}%, ${posY}%) scale(${zoom}) rotate(${rot}deg)`;
+          }
           contentDiv.appendChild(img); d.appendChild(contentDiv);
           if (selectedIds.size <= 1) { const handle = document.createElement("div"); handle.className = "handle"; d.appendChild(handle); attachResize(handle, d, el); }
           attachDrag(d, el);
@@ -1429,6 +1453,7 @@
         $("elH").value = first.hCm.toFixed(1);
         $("modeFit").classList.toggle("active", first.mode === "fit");
         $("modeFill").classList.toggle("active", first.mode === "fill");
+        $("modeStretch").classList.toggle("active", first.mode === "stretch");
         $("borderColor").value = first.borderColor || "#000000";
         $("borderWidth").value = first.borderWidth || "0";
         $("imgZoom").value = first.imgZoom !== undefined ? first.imgZoom : 100;
@@ -1467,6 +1492,22 @@
       window.addEventListener("load", () => {
         saveState();
         window.addEventListener("resize", renderAll);
+
+        // Fix para teclado móvil: guardar y restaurar scroll del stage-wrapper
+        const stageWrapper = $('stage-wrapper');
+        const inspectorInputs = $('inspector').querySelectorAll('input, select');
+        let savedScrollTop = 0;
+        inspectorInputs.forEach(input => {
+          input.addEventListener('focusin', () => {
+            savedScrollTop = stageWrapper.scrollTop;
+          });
+          input.addEventListener('focusout', () => {
+            setTimeout(() => {
+              stageWrapper.scrollTop = savedScrollTop;
+              window.scrollTo(0, 0);
+            }, 150);
+          });
+        });
 
         $("multiSelectBtn").addEventListener("click", () => {
           multiSelectMode = !multiSelectMode;
@@ -1515,8 +1556,9 @@
         $("closeBatch").addEventListener("click", () => $("batchModal").classList.remove("show"));
         $("distribAuto").addEventListener("click", () => { batchDistrib = "auto"; $("distribAuto").classList.add("active"); $("distribManual").classList.remove("active"); $("autoSection").style.display = "block"; $("manualSection").style.display = "none"; });
         $("distribManual").addEventListener("click", () => { batchDistrib = "manual"; $("distribManual").classList.add("active"); $("distribAuto").classList.remove("active"); $("autoSection").style.display = "none"; $("manualSection").style.display = "flex"; });
-        $("batchModeFit").addEventListener("click", () => { batchMode = "fit"; $("batchModeFit").classList.add("active"); $("batchModeFill").classList.remove("active"); });
-        $("batchModeFill").addEventListener("click", () => { batchMode = "fill"; $("batchModeFill").classList.add("active"); $("batchModeFit").classList.remove("active"); });
+        $("batchModeFit").addEventListener("click", () => { batchMode = "fit"; $("batchModeFit").classList.add("active"); $("batchModeFill").classList.remove("active"); $("batchModeStretch").classList.remove("active"); });
+        $("batchModeFill").addEventListener("click", () => { batchMode = "fill"; $("batchModeFill").classList.add("active"); $("batchModeFit").classList.remove("active"); $("batchModeStretch").classList.remove("active"); });
+        $("batchModeStretch").addEventListener("click", () => { batchMode = "stretch"; $("batchModeStretch").classList.add("active"); $("batchModeFit").classList.remove("active"); $("batchModeFill").classList.remove("active"); });
         $("runBatchBtn").addEventListener("click", () => {
           const filesInput = $("batchFiles");
           if (!filesInput.files || filesInput.files.length === 0) { alert("Por favor selecciona al menos una imagen."); return; }
@@ -1598,8 +1640,9 @@
         $("elW").addEventListener("change", (e) => { applyToAllSelected(el => { el.wCm = Math.max(0.5, parseFloat(e.target.value) || el.wCm || 1); }); saveState(); renderAll(); });
         $("elH").addEventListener("input", (e) => { const val = parseFloat(e.target.value); if (!isNaN(val) && val > 0) { applyToAllSelected(el => { el.hCm = val; const domEl = document.querySelector(`.el[data-id="${el.id}"]`); if (domEl) domEl.style.height = el.hCm * PX_PER_CM + "px"; }); } });
         $("elH").addEventListener("change", (e) => { applyToAllSelected(el => { el.hCm = Math.max(0.5, parseFloat(e.target.value) || el.hCm || 1); }); saveState(); renderAll(); });
-        $("modeFit").addEventListener("click", () => { applyToAllSelected(el => { el.mode = "fit"; }); $("modeFit").classList.add("active"); $("modeFill").classList.remove("active"); saveState(); renderAll(); });
-        $("modeFill").addEventListener("click", () => { applyToAllSelected(el => { el.mode = "fill"; }); $("modeFill").classList.add("active"); $("modeFit").classList.remove("active"); saveState(); renderAll(); });
+        $("modeFit").addEventListener("click", () => { applyToAllSelected(el => { el.mode = "fit"; }); $("modeFit").classList.add("active"); $("modeFill").classList.remove("active"); $("modeStretch").classList.remove("active"); saveState(); syncInspector(); renderAll(); });
+        $("modeFill").addEventListener("click", () => { applyToAllSelected(el => { el.mode = "fill"; }); $("modeFill").classList.add("active"); $("modeFit").classList.remove("active"); $("modeStretch").classList.remove("active"); saveState(); syncInspector(); renderAll(); });
+        $("modeStretch").addEventListener("click", () => { applyToAllSelected(el => { el.mode = "stretch"; }); $("modeStretch").classList.add("active"); $("modeFit").classList.remove("active"); $("modeFill").classList.remove("active"); saveState(); syncInspector(); renderAll(); });
         $("borderColor").addEventListener("input", (e) => { applyToAllSelected(el => { el.borderColor = e.target.value; }); renderAll(); });
         $("borderColor").addEventListener("change", saveState);
         $("borderWidth").addEventListener("change", (e) => { applyToAllSelected(el => { el.borderWidth = e.target.value; }); saveState(); renderAll(); });
@@ -1625,11 +1668,14 @@
           try {
             const { jsPDF } = window.jspdf;
             const paper = getPaperCm();
-            const pdf = new jsPDF({ unit: "cm", format: [paper.w, paper.h], orientation: "portrait", compress: true });
+            const isLandscape = paper.w > paper.h;
+            const format = isLandscape ? [paper.h, paper.w] : [paper.w, paper.h];
+            const orientation = isLandscape ? "landscape" : "portrait";
+            const pdf = new jsPDF({ unit: "cm", format, orientation, compress: true });
             for (let i = 0; i < pages.length; i++) {
               const canvas = await renderPageToCanvas(i, 300);
               const imgData = canvas.toDataURL("image/jpeg", 0.95);
-              if (i > 0) pdf.addPage([paper.w, paper.h], "portrait");
+              if (i > 0) pdf.addPage(format, orientation);
               pdf.addImage(imgData, "JPEG", 0, 0, paper.w, paper.h, undefined, "FAST");
             }
             pdf.save("Documento_Impresion.pdf");
@@ -1646,7 +1692,15 @@
             printArea.innerHTML = "";
             let styleTag = document.getElementById("dynamicPageSize");
             if (!styleTag) { styleTag = document.createElement("style"); styleTag.id = "dynamicPageSize"; document.head.appendChild(styleTag); }
-            styleTag.textContent = `@media print { @page { size: ${paper.w}cm ${paper.h}cm; margin: 0; } }`;
+            let sizeRule;
+            const inchW = (paper.w / 2.54).toFixed(2);
+            const inchH = (paper.h / 2.54).toFixed(2);
+            if (paperType === "carta" && orientation === "vertical") sizeRule = "letter";
+            else if (paperType === "carta" && orientation === "horizontal") sizeRule = "letter landscape";
+            else if (paperType === "legal" && orientation === "vertical") sizeRule = "legal";
+            else if (paperType === "legal" && orientation === "horizontal") sizeRule = "legal landscape";
+            else sizeRule = `${inchW}in ${inchH}in`;
+            styleTag.textContent = `@media print { @page { size: ${sizeRule}; margin: 0; } }`;
             for (let i = 0; i < pages.length; i++) {
               const canvas = await renderPageToCanvas(i, 300);
               const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
@@ -1661,9 +1715,6 @@
           finally { btn.disabled = false; btn.textContent = "Imprimir"; }
         });
 
-        // Marquee selection logic (CORREGIDO: ahora escucha en #stage y ya NO excluye
-        // los toques que caen sobre una imagen, así el recuadro se puede iniciar en cualquier
-        // punto de la hoja, incluso arrastrando desde encima de una foto)
         function setupMarquee() {
           const stage = $("stage");
           if (!stage) return;
@@ -1681,7 +1732,6 @@
             if (!marqueeMode) return;
             const pageDiv = getPageDiv();
             if (!pageDiv) return;
-            // Cualquier toque dentro de la hoja inicia el marquee, incluso sobre una imagen
             if (!pageDiv.contains(e.target) && e.target !== pageDiv) return;
 
             currentPageDiv = pageDiv;
@@ -1692,7 +1742,6 @@
             startX = (e.clientX - pageRect.left) / scale;
             startY = (e.clientY - pageRect.top) / scale;
 
-            // Remover marquee previo si existe
             const existing = pageDiv.querySelector(".marquee-box");
             if (existing) existing.remove();
 
@@ -1744,7 +1793,6 @@
             const pageRect = pageDiv.getBoundingClientRect();
             const scale = zoomScale;
 
-            // Convertir el cuadro de selección a coordenadas de página (cm)
             const mx1 = (marqueeRect.left - pageRect.left) / scale / PX_PER_CM;
             const my1 = (marqueeRect.top - pageRect.top) / scale / PX_PER_CM;
             const mx2 = (marqueeRect.right - pageRect.left) / scale / PX_PER_CM;
@@ -1755,7 +1803,6 @@
             currentPageDiv = null;
             activePointerId = null;
 
-            // Encontrar elementos que intersectan
             const p = currentPage();
             const intersectedIds = [];
             p.els.forEach(el => {
